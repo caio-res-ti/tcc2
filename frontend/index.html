@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leitor EPUB</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            overflow: hidden;
+            min-height: 80vh;
+        }
+
+        .header {
+            background: linear-gradient(45deg, #2c3e50, #34495e);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .upload-section {
+            text-align: center;
+            padding: 60px 40px;
+            border: 3px dashed #ddd;
+            margin: 40px;
+            border-radius: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-label {
+            display: inline-block;
+            padding: 20px 40px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1.2em;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .file-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .reader-container {
+            display: none;
+            height: calc(100vh - 40px);
+            flex-direction: column;
+        }
+
+        .book-header {
+            background: #f8f9fa;
+            padding: 20px 30px;
+            border-bottom: 1px solid #e1e5e9;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .book-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .book-author {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .chapter-info {
+            background: #667eea;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+        }
+
+        .reader-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-right: 1px solid #e1e5e9;
+            overflow-y: auto;
+        }
+
+        .sidebar h3 {
+            padding: 20px;
+            background: #e9ecef;
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.1em;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .chapter-list {
+            list-style: none;
+        }
+
+        .chapter-item {
+            padding: 15px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #e9ecef;
+            transition: all 0.3s ease;
+            font-size: 0.95em;
+        }
+
+        .chapter-item:hover {
+            background: #e3f2fd;
+        }
+
+        .chapter-item.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .reading-area {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+            font-family: Georgia, serif;
+            line-height: 1.8;
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        .reading-area h1, .reading-area h2, .reading-area h3 {
+            color: #2c3e50;
+            margin: 30px 0 20px 0;
+        }
+
+        .reading-area h1 {
+            font-size: 2em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .reading-area p {
+            margin-bottom: 20px;
+            text-align: justify;
+        }
+
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px 40px;
+            background: #f8f9fa;
+            border-top: 1px solid #e1e5e9;
+        }
+
+        .nav-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .nav-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .nav-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .api-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 25px;
+            font-size: 0.9em;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+            display: none;
+            z-index: 1000;
+        }
+
+        .api-status.error {
+            background: #dc3545;
+        }
+
+        .api-status.sending {
+            background: #007bff;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.1em;
+            color: #666;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .settings-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.9);
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            display: none;
+        }
+
+        .settings-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Leitor EPUB</h1>
+        </div>
+
+        <div class="upload-section" id="uploadSection">
+            <input type="file" id="epubFile" class="file-input" accept=".epub">
+            <label for="epubFile" class="file-label">
+                📖 Selecionar arquivo EPUB
+            </label>
+            <p style="margin-top: 20px; color: #666; font-size: 1.1em;">Escolha um arquivo .epub para começar a ler</p>
+        </div>
+
+        <div class="loading" id="loadingSection" style="display: none;">
+            <div class="loading-spinner"></div>
+            <p>Carregando seu livro...</p>
+        </div>
+
+        <div class="reader-container" id="readerContainer">
+            <div class="book-header">
+                <div>
+                    <div class="book-title" id="bookTitle"></div>
+                    <div class="book-author" id="bookAuthor"></div>
+                </div>
+                <div class="chapter-info" id="chapterInfo"></div>
+            </div>
+
+            <div class="reader-content">
+                <div class="sidebar">
+                    <h3>📑 Capítulos</h3>
+                    <ul class="chapter-list" id="chapterList"></ul>
+                </div>
+
+                <div class="reading-area" id="readingArea">
+                    <p>Selecione um capítulo para começar a leitura.</p>
+                </div>
+            </div>
+
+            <div class="navigation">
+                <button class="nav-btn" id="prevBtn" disabled>← Anterior</button>
+                <button class="nav-btn" id="nextBtn" disabled>Próximo →</button>
+            </div>
+        </div>
+    </div>
+
+    <button class="settings-btn" id="settingsBtn" title="Configurações da API">⚙️</button>
+
+    <div class="settings-modal" id="settingsModal">
+        <div class="modal-content">
+            <h3>⚙️ Configuração da API</h3>
+            <div class="form-group">
+                <label for="apiUrl">URL da API:</label>
+                <input type="url" id="apiUrl" value="http://localhost:8000/translate">
+            </div>
+            <div class="form-group">
+                <label for="httpMethod">Método HTTP:</label>
+                <select id="httpMethod">
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="PATCH">PATCH</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="apiHeaders">Headers (JSON):</label>
+                <textarea id="apiHeaders" rows="3">{"Content-Type": "application/json"}</textarea>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" id="closeSettings">Cancelar</button>
+                <button class="btn btn-primary" id="saveSettings">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="api-status" id="apiStatus"></div>
+
+    <script>
+        let currentEpub = null;
+        let currentChapters = [];
+        let currentChapterIndex = 0;
+        let apiConfig = {
+            url: 'http://localhost:8000/translate',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        };
+
+        // Event listeners
+        document.getElementById('epubFile').addEventListener('change', handleFileSelect);
+        document.getElementById('prevBtn').addEventListener('click', () => navigateChapter(-1));
+        document.getElementById('nextBtn').addEventListener('click', () => navigateChapter(1));
+        document.getElementById('settingsBtn').addEventListener('click', openSettings);
+        document.getElementById('closeSettings').addEventListener('click', closeSettings);
+        document.getElementById('saveSettings').addEventListener('click', saveSettings);
+        document.getElementById('settingsModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeSettings();
+        });
+
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showLoading();
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const zip = await JSZip.loadAsync(arrayBuffer);
+                
+                const epub = await parseEPUB(zip);
+                currentEpub = epub;
+                currentChapters = epub.chapters;
+                
+                setupReader();
+                loadChapter(0);
+                
+            } catch (error) {
+                console.error('Erro ao processar EPUB:', error);
+                showApiStatus('Erro ao carregar o arquivo EPUB', 'error');
+                hideLoading();
+            }
+        }
+
+        async function parseEPUB(zip) {
+            const containerXml = await zip.file('META-INF/container.xml').async('string');
+            const parser = new DOMParser();
+            const containerDoc = parser.parseFromString(containerXml, 'text/xml');
+            const opfPath = containerDoc.querySelector('rootfile').getAttribute('full-path');
+            
+            const opfContent = await zip.file(opfPath).async('string');
+            const opfDoc = parser.parseFromString(opfContent, 'text/xml');
+            
+            const metadata = extractMetadata(opfDoc);
+            const spine = extractSpine(opfDoc);
+            const manifest = extractManifest(opfDoc);
+            const chapters = await extractChapters(zip, spine, manifest, opfPath);
+            
+            return { metadata, chapters };
+        }
+
+        function extractMetadata(opfDoc) {
+            const metadata = {};
+            const metadataNode = opfDoc.querySelector('metadata');
+            
+            const title = metadataNode.querySelector('title');
+            if (title) metadata.title = title.textContent;
+            
+            const creator = metadataNode.querySelector('creator');
+            if (creator) metadata.author = creator.textContent;
+            
+            return metadata;
+        }
+
+        function extractSpine(opfDoc) {
+            const spine = [];
+            const spineItems = opfDoc.querySelectorAll('spine itemref');
+            spineItems.forEach(item => spine.push(item.getAttribute('idref')));
+            return spine;
+        }
+
+        function extractManifest(opfDoc) {
+            const manifest = {};
+            const manifestItems = opfDoc.querySelectorAll('manifest item');
+            manifestItems.forEach(item => {
+                const id = item.getAttribute('id');
+                const href = item.getAttribute('href');
+                const mediaType = item.getAttribute('media-type');
+                manifest[id] = { href, mediaType };
+            });
+            return manifest;
+        }
+
+        async function extractChapters(zip, spine, manifest, opfPath) {
+            const chapters = [];
+            const basePath = opfPath.substring(0, opfPath.lastIndexOf('/') + 1);
+            
+            for (let i = 0; i < spine.length; i++) {
+                const itemId = spine[i];
+                const manifestItem = manifest[itemId];
+                
+                if (manifestItem && manifestItem.mediaType === 'application/xhtml+xml') {
+                    const filePath = basePath + manifestItem.href;
+                    
+                    try {
+                        const content = await zip.file(filePath).async('string');
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(content, 'text/html');
+                        
+                        let title = doc.querySelector('title')?.textContent || 
+                                   doc.querySelector('h1')?.textContent || 
+                                   doc.querySelector('h2')?.textContent || 
+                                   `Capítulo ${i + 1}`;
+                        
+                        const textContent = extractTextFromHTML(doc);
+                        const htmlContent = extractCleanHTML(doc);
+                        
+                        chapters.push({
+                            id: itemId,
+                            title: title.trim(),
+                            textContent: textContent,
+                            htmlContent: htmlContent
+                        });
+                    } catch (error) {
+                        console.warn(`Erro ao processar capítulo ${itemId}:`, error);
+                    }
+                }
+            }
+            
+            return chapters;
+        }
+
+        function extractTextFromHTML(doc) {
+            const scripts = doc.querySelectorAll('script, style');
+            scripts.forEach(el => el.remove());
+            const body = doc.querySelector('body') || doc;
+            return body.textContent.replace(/\s+/g, ' ').trim();
+        }
+
+        function extractCleanHTML(doc) {
+            const body = doc.querySelector('body') || doc;
+            const scripts = body.querySelectorAll('script, style, link');
+            scripts.forEach(el => el.remove());
+            return body.innerHTML;
+        }
+
+        function setupReader() {
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('loadingSection').style.display = 'none';
+            document.getElementById('readerContainer').style.display = 'flex';
+            document.getElementById('settingsBtn').style.display = 'block';
+            
+            // Atualiza informações do livro
+            document.getElementById('bookTitle').textContent = currentEpub.metadata.title || 'Título não disponível';
+            document.getElementById('bookAuthor').textContent = currentEpub.metadata.author || 'Autor desconhecido';
+            
+            // Cria lista de capítulos
+            const chapterList = document.getElementById('chapterList');
+            chapterList.innerHTML = '';
+            
+            currentChapters.forEach((chapter, index) => {
+                const li = document.createElement('li');
+                li.className = 'chapter-item';
+                li.textContent = chapter.title;
+                li.addEventListener('click', () => loadChapter(index));
+                chapterList.appendChild(li);
+            });
+        }
+
+        function loadChapter(index) {
+            if (index < 0 || index >= currentChapters.length) return;
+            
+            currentChapterIndex = index;
+            const chapter = currentChapters[index];
+            
+            // Atualiza área de leitura
+            document.getElementById('readingArea').innerHTML = chapter.htmlContent;
+            
+            // Atualiza informações do capítulo
+            document.getElementById('chapterInfo').textContent = `${index + 1} / ${currentChapters.length}`;
+            
+            // Atualiza sidebar
+            document.querySelectorAll('.chapter-item').forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+            
+            // Atualiza botões de navegação
+            document.getElementById('prevBtn').disabled = index === 0;
+            document.getElementById('nextBtn').disabled = index === currentChapters.length - 1;
+            
+            // Rola para o topo
+            document.getElementById('readingArea').scrollTop = 0;
+            
+            // Envia para API automaticamente
+            sendChapterToAPI(chapter);
+        }
+
+        function navigateChapter(direction) {
+            const newIndex = currentChapterIndex + direction;
+            loadChapter(newIndex);
+        }
+
+        async function sendChapterToAPI(chapter) {
+            showApiStatus('Traduzindo capítulo...', 'sending');
+            
+            const payload = {
+                bookTitle: currentEpub.metadata.title || 'Título não disponível',
+                author: currentEpub.metadata.author || 'Autor desconhecido',
+                chapterTitle: chapter.title,
+                chapterIndex: currentChapterIndex + 1,
+                totalChapters: currentChapters.length,
+                htmlContent: chapter.htmlContent,
+                timestamp: new Date().toISOString()
+            };
+            
+            try {
+                const response = await fetch(apiConfig.url, {
+                    method: apiConfig.method,
+                    headers: apiConfig.headers,
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.translatedHtml) {
+                        // Atualiza a área de leitura com o texto traduzido
+                        document.getElementById('readingArea').innerHTML = result.translatedHtml;
+                        showApiStatus(`✓ Traduzido em ${result.processingTime?.toFixed(1)}s`, 'success');
+                    } else {
+                        throw new Error(result.error || 'Erro na tradução');
+                    }
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+            } catch (error) {
+                console.error('Erro ao traduzir:', error);
+                showApiStatus('✗ Erro na tradução', 'error');
+                // Mantém o conteúdo original em caso de erro
+            }
+        }
+
+        function showLoading() {
+            document.getElementById('uploadSection').style.display = 'none';
+            document.getElementById('loadingSection').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingSection').style.display = 'none';
+            document.getElementById('uploadSection').style.display = 'block';
+        }
+
+        function showApiStatus(message, type) {
+            const status = document.getElementById('apiStatus');
+            status.textContent = message;
+            status.className = `api-status ${type}`;
+            status.style.display = 'block';
+            
+            if (type !== 'sending') {
+                setTimeout(() => {
+                    status.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        function openSettings() {
+            document.getElementById('settingsModal').style.display = 'flex';
+            // Carrega configurações atuais
+            document.getElementById('apiUrl').value = apiConfig.url;
+            document.getElementById('httpMethod').value = apiConfig.method;
+            document.getElementById('apiHeaders').value = JSON.stringify(apiConfig.headers, null, 2);
+        }
+
+        function closeSettings() {
+            document.getElementById('settingsModal').style.display = 'none';
+        }
+
+        function saveSettings() {
+            try {
+                apiConfig.url = document.getElementById('apiUrl').value;
+                apiConfig.method = document.getElementById('httpMethod').value;
+                apiConfig.headers = JSON.parse(document.getElementById('apiHeaders').value);
+                
+                showApiStatus('✓ Configurações salvas', 'success');
+                closeSettings();
+            } catch (error) {
+                alert('Erro no formato dos headers JSON');
+            }
+        }
+    </script>
+</body>
+</html>
